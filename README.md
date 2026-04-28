@@ -6,11 +6,11 @@ Reconstruct image contours as arcs of circles, where each arc is delimited by th
 
 **Input**
 
-![input sample](input/input_sample.png)
+![kakapo logo input](input/kakapo_logo.png)
 
 **Output**
 
-![result](outputs/result.png)
+![kakapo logo result](outputs/logo_result.png)
 
 ## Setup
 
@@ -26,5 +26,8 @@ uv sync
 ```bash
 uv run python scripts/run.py path/to/image.jpg outputs/result.png
 ```
+
+The default canvas is 1920×1080. Kept contours are fitted and centered on the
+canvas automatically; use `--no-center` to keep source-image coordinates.
 
 Add `--debug` to write step-by-step plots to `outputs/debug/`.

@@ -21,7 +21,10 @@ outputs/debug/
 *.jpg
 !desired_image.jpg
 !input/input_sample.png
+!input/kakapo_logo.png
 !outputs/result.png
+!outputs/logo_result.png
+*.zip
 
 # PDF papers/references
 *.pdf

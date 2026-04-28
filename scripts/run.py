@@ -10,8 +10,8 @@ def main() -> None:
     )
     parser.add_argument("image", help="Path to input image")
     parser.add_argument("output", help="Path for output PNG")
-    parser.add_argument("--width", type=int, default=1600, help="Output canvas width (default: 1600)")
-    parser.add_argument("--height", type=int, default=2100, help="Output canvas height (default: 2100)")
+    parser.add_argument("--width", type=int, default=1920, help="Output canvas width (default: 1920)")
+    parser.add_argument("--height", type=int, default=1080, help="Output canvas height (default: 1080)")
     parser.add_argument(
         "--threshold", type=float, default=199.0,
         help="Marching-squares contour level (default: 199)"
@@ -35,6 +35,14 @@ def main() -> None:
     parser.add_argument(
         "--no-cv2", action="store_true",
         help="Use plain skimage contours (no cv2 preprocessing)"
+    )
+    parser.add_argument(
+        "--no-center", action="store_true",
+        help="Render in source-image coordinates instead of fitting and centering on the canvas"
+    )
+    parser.add_argument(
+        "--padding", type=float, default=0.08,
+        help="Canvas padding fraction when centering output (default: 0.08)"
     )
     parser.add_argument(
         "--debug", action="store_true",
@@ -61,6 +69,8 @@ def main() -> None:
         min_circles=args.min_circles,
         quality_threshold=args.quality_threshold,
         use_cv2_preprocessing=not args.no_cv2,
+        center_on_canvas=not args.no_center,
+        output_padding_fraction=args.padding,
         debug_dir=debug_dir,
     )
 
