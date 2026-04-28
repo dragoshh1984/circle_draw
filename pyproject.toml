@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "circle-draw"
+version = "0.1.0"
+description = "Reconstruct image contours as circle arcs delimited by circle intersections"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "scikit-image>=0.21",
+    "opencv-python>=4.8",
+    "pycairo>=1.25",
+    "imageio>=2.31",
+    "matplotlib>=3.7",
+]
+
+[project.scripts]
+circle-draw = "circle_draw.pipeline:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/circle_draw"]
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.0",
+    "ipykernel>=6.0",
+]
