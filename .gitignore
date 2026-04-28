@@ -15,11 +15,13 @@ venv/
 # uv
 .uv/
 
-# Output images (large generated files)
-outputs/
+# Output images (large generated files — keep only the committed example)
+outputs/debug/
 *.png
 *.jpg
 !desired_image.jpg
+!input/input_sample.png
+!outputs/result.png
 
 # PDF papers/references
 *.pdf
