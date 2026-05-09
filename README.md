@@ -12,6 +12,10 @@ input image, result, config, and debug fitting videos.
 
 ![kakapo logo input](outputs/demo_kakapo_logo/input.png)
 
+**Goal**
+
+![desired circle drawing goal](desired_image.jpg)
+
 **Output**
 
 ![kakapo logo result](outputs/demo_kakapo_logo/result.png)

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-09T19:14:59",
+  "timestamp": "2026-05-09T21:13:04",
   "command": "uv run python scripts/run.py input/kakapo_logo.png outputs/ --quality-threshold 0.8 --backward-k 100 --debug",
   "output": "outputs/demo_kakapo_logo/result.png",
   "parameters": {
