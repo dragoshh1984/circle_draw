@@ -5,6 +5,8 @@ import json
 import os
 from datetime import datetime
 
+DEFAULT_BACKGROUND = "input/background_sample.png"
+
 
 def _make_run_dir(output_dir: str, image_path: str) -> tuple[str, str]:
     """Create a timestamped run directory and return (run_dir, output_png_path)."""
@@ -21,15 +23,15 @@ def _save_config(args: argparse.Namespace, run_dir: str, output_path: str) -> No
     flags: list[str] = ["uv run python scripts/run.py", args.image, args.output_dir]
     defaults = {
         "width": 1920, "height": 1080, "threshold": 199.0, "step": 5,
-        "min_points": 40, "min_circles": 3, "quality_threshold": 0.8,
-        "backward_k": 10,
+        "min_points": 40, "min_circles": 1, "quality_threshold": 1.0,
+        "forward_k": 10, "backward_k": 10, "background": DEFAULT_BACKGROUND,
         "no_cv2": False, "no_center": False, "padding": 0.08, "debug": False,
     }
     flag_map = {
         "width": "--width", "height": "--height", "threshold": "--threshold",
         "step": "--step", "min_points": "--min-points", "min_circles": "--min-circles",
-        "quality_threshold": "--quality-threshold", "backward_k": "--backward-k",
-        "no_cv2": "--no-cv2", "no_center": "--no-center",
+        "quality_threshold": "--quality-threshold", "forward_k": "--forward-k", "backward_k": "--backward-k",
+        "background": "--background", "no_cv2": "--no-cv2", "no_center": "--no-center",
         "padding": "--padding", "debug": "--debug",
     }
     bool_flags = {"no_cv2", "no_center", "debug"}
@@ -76,16 +78,20 @@ def main() -> None:
         help="Skip contours shorter than this (default: 40)"
     )
     parser.add_argument(
-        "--min-circles", type=int, default=3,
-        help="Skip contours with fewer fitted circles (default: 3)"
+        "--min-circles", type=int, default=1,
+        help="Skip contours with fewer fitted circles (default: 1)"
     )
     parser.add_argument(
-        "--quality-threshold", type=float, default=0.8,
-        help="Fit-quality ratio to trigger new arc segment (default: 0.8)"
+        "--quality-threshold", type=float, default=1.0,
+        help="Minimum accepted refit quality ratio before starting a new arc segment (default: 1.0)"
     )
     parser.add_argument(
         "--backward-k", type=int, default=10,
         help="After forward pass stops, try absorbing up to K points backwards (default: 10)"
+    )
+    parser.add_argument(
+        "--forward-k", type=int, default=10,
+        help="Try accepting up to K new points per forward refit, shrinking to 0 on failure (default: 10)"
     )
     parser.add_argument(
         "--no-cv2", action="store_true",
@@ -98,6 +104,10 @@ def main() -> None:
     parser.add_argument(
         "--padding", type=float, default=0.08,
         help="Canvas padding fraction when centering output (default: 0.08)"
+    )
+    parser.add_argument(
+        "--background", default=DEFAULT_BACKGROUND,
+        help=f"Background image composited under the final result (default: {DEFAULT_BACKGROUND})"
     )
     parser.add_argument(
         "--debug", action="store_true",
@@ -122,10 +132,12 @@ def main() -> None:
         min_contour_points=args.min_points,
         min_circles=args.min_circles,
         quality_threshold=args.quality_threshold,
+        forward_k=args.forward_k,
         backward_k=args.backward_k,
         use_cv2_preprocessing=not args.no_cv2,
         center_on_canvas=not args.no_center,
         output_padding_fraction=args.padding,
+        background_path=args.background or None,
         debug_dir=debug_dir,
     )
     _save_config(args, run_dir, output_path)

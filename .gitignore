@@ -15,15 +15,22 @@ venv/
 # uv
 .uv/
 
-# Output images (large generated files — keep only the committed example)
-outputs/debug/
+# Generated outputs: keep only the committed demo run.
+outputs/*
+!outputs/.gitkeep
+!outputs/demo_kakapo_logo/
+!outputs/demo_kakapo_logo/**
+
+# Image assets
 *.png
 *.jpg
+*.xcf
 !desired_image.jpg
 !input/input_sample.png
 !input/kakapo_logo.png
-!outputs/result.png
-!outputs/logo_result.png
+!input/background_sample.png
+!outputs/demo_kakapo_logo/
+!outputs/demo_kakapo_logo/**
 *.zip
 
 # PDF papers/references

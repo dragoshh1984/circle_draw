@@ -5,15 +5,16 @@ from typing import Optional
 
 import numpy as np
 
-from circle_draw.circle_geometry.intersections import build_arc_boundaries
+from circle_draw.circle_geometry.arcs import CircleArc, build_circle_arcs
 from circle_draw.point_selection.fit_quality import segment
-from circle_draw.rendering.cairo_arcs import render
+from circle_draw.rendering.cairo_arcs import render, resolve_render_shape
 
 
 def _centering_transform(
     contours: list[np.ndarray],
     image_shape: tuple[int, int, int],
     padding_fraction: float = 0.08,
+    offset: tuple[float, float] = (0.0, 0.0),
 ) -> tuple[float, float, float]:
     """Return scale, dx, dy that fit kept contours and center them on the canvas."""
     if not contours:
@@ -45,13 +46,24 @@ def _centering_transform(
     object_center = (min_xy + max_xy) / 2
     canvas_center = np.array([width / 2, height / 2])
     dx, dy = canvas_center - object_center * scale
+    dx += offset[0]
+    dy += offset[1]
     return float(scale), float(dx), float(dy)
+
+
+def _centered_canvas_offset(
+    canvas_shape: tuple[int, int, int],
+    render_shape: tuple[int, int, int],
+) -> tuple[float, float]:
+    canvas_w, canvas_h = canvas_shape[0], canvas_shape[1]
+    render_w, render_h = render_shape[0], render_shape[1]
+    return ((render_w - canvas_w) / 2, (render_h - canvas_h) / 2)
 
 
 def _apply_transform(
     contours_all: list[np.ndarray],
     circles_per_contour: list[list[np.ndarray]],
-    boundaries_per_contour: list[list[list[tuple[float, float]]]],
+    arcs_per_contour: list[list[CircleArc]],
     scale: float,
     dx: float,
     dy: float,
@@ -67,12 +79,9 @@ def _apply_transform(
             circle[1] = circle[1] * scale + dy
             circle[2] = circle[2] * scale
 
-    for boundaries in boundaries_per_contour:
-        for boundary_pair in boundaries:
-            for i, point in enumerate(boundary_pair):
-                if np.isnan(point[0]) or np.isnan(point[1]):
-                    continue
-                boundary_pair[i] = (point[0] * scale + dx, point[1] * scale + dy)
+    for arcs in arcs_per_contour:
+        for arc in arcs:
+            arc.transform_boundaries(scale, dx, dy)
 
 
 def run(
@@ -82,12 +91,14 @@ def run(
     threshold: float = 199.0,
     contour_step: int = 5,
     min_contour_points: int = 40,
-    min_circles: int = 3,
-    quality_threshold: float = 0.8,
+    min_circles: int = 1,
+    quality_threshold: float = 1.0,
+    forward_k: int = 10,
     backward_k: int = 10,
     use_cv2_preprocessing: bool = True,
     center_on_canvas: bool = True,
     output_padding_fraction: float = 0.08,
+    background_path: Optional[str] = None,
     debug_dir: Optional[str] = None,
 ) -> None:
     """Convert image to a circle-arc drawing and save as transparent PNG.
@@ -96,60 +107,82 @@ def run(
     threshold:   marching-squares contour level.
     contour_step: subsample every Nth contour point.
     min_contour_points: skip contours shorter than this.
-    min_circles: skip contours that produce fewer circles than this.
+    min_circles: skip contours that produce fewer fitted circles than this.
+    forward_k: max number of new points to try accepting in one refit batch.
     use_cv2_preprocessing: if True, equalise + denoise before extracting contours.
     center_on_canvas: if True, fit and center kept contours on the output canvas.
     output_padding_fraction: canvas fraction reserved as padding on each side.
+    background_path: optional image to draw behind the final render.
     debug_dir:   if set, save step-by-step plots here.
     """
+    render_shape = resolve_render_shape(image_shape, background_path)
+
     if use_cv2_preprocessing:
         from circle_draw.contour_extraction.cv2_enhanced import load_and_extract
     else:
         from circle_draw.contour_extraction.skimage_marching import load_and_extract
 
-    if debug_dir:
-        from circle_draw import debug_plots
-
     contours_all = load_and_extract(image_path, threshold=threshold, step=contour_step)
+
+    # Set up video collector if debug is requested
+    collector = None
+    if debug_dir:
+        from circle_draw.debug_video import VideoCollector
+        os.makedirs(debug_dir, exist_ok=True)
+        collector = VideoCollector(image_shape, debug_dir)
+        eligible = [p for p in contours_all if len(p) >= min_contour_points]
+        collector.set_all_contours(eligible)
+        _video_idx   = 0
+        _video_total = len(eligible)
 
     all_contours: list[np.ndarray] = []
     all_circles: list[list] = []
-    all_boundaries: list[list] = []
+    all_arcs: list[list[CircleArc]] = []
 
     for points in contours_all:
         if len(points) < min_contour_points:
             continue
 
-        end_pts, circles = segment(points, quality_threshold=quality_threshold, backward_k=backward_k)
+        frame_cb = None
+        if collector is not None:
+            collector.set_contour(points, _video_idx, _video_total)
+            frame_cb = collector.make_callback()
+
+        _, circles, segment_points = segment(
+            points,
+            quality_threshold=quality_threshold,
+            forward_k=forward_k,
+            backward_k=backward_k,
+            frame_callback=frame_cb,
+        )
+
+        if collector is not None:
+            collector.on_contour_done(points)
+            _video_idx += 1
 
         if len(circles) < min_circles:
             continue
 
-        boundaries = build_arc_boundaries(circles, end_pts)
+        arcs = build_circle_arcs(circles, segment_points)
 
         all_contours.append(points)
         all_circles.append(circles)
-        all_boundaries.append(boundaries)
+        all_arcs.append(arcs)
 
     if center_on_canvas:
-        scale, dx, dy = _centering_transform(all_contours, image_shape, output_padding_fraction)
-        _apply_transform(contours_all, all_circles, all_boundaries, scale, dx, dy)
+        scale, dx, dy = _centering_transform(
+            all_contours,
+            image_shape,
+            output_padding_fraction,
+            offset=_centered_canvas_offset(image_shape, render_shape),
+        )
+        _apply_transform(contours_all, all_circles, all_arcs, scale, dx, dy)
 
     print(f"Rendering {len(all_contours)} contours ({sum(len(c) for c in all_circles)} circles total)")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    render(all_contours, all_circles, all_boundaries, image_shape, output_path)
+    render(all_arcs, render_shape, output_path, background_path=background_path)
     print(f"Saved → {output_path}")
 
-    if debug_dir:
-        print(f"Saving debug plots → {debug_dir}/")
-        debug_plots.save_contours_overview(contours_all, all_contours, image_shape, debug_dir)
-        # limit per-contour plots to avoid flooding disk on images with many contours
-        max_contour_plots = 50
-        for i, (points, circles, boundaries) in enumerate(zip(all_contours, all_circles, all_boundaries)):
-            if i >= max_contour_plots:
-                print(f"  (skipping debug plots for remaining {len(all_contours) - max_contour_plots} contours)")
-                break
-            debug_plots.save_arc_segmentation(points, circles, boundaries, i, debug_dir)
-            debug_plots.save_arc_boundaries(points, circles, boundaries, i, debug_dir)
-        print(f"Debug plots saved ({min(len(all_contours), max_contour_plots)} contours)")
+    if collector is not None:
+        collector.save_videos()

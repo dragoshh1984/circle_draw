@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-05-09T19:14:59",
+  "command": "uv run python scripts/run.py input/kakapo_logo.png outputs/ --quality-threshold 0.8 --backward-k 100 --debug",
+  "output": "outputs/demo_kakapo_logo/result.png",
+  "parameters": {
+    "image": "input/kakapo_logo.png",
+    "output_dir": "outputs/",
+    "width": 1920,
+    "height": 1080,
+    "threshold": 199.0,
+    "step": 5,
+    "min_points": 40,
+    "min_circles": 1,
+    "quality_threshold": 0.8,
+    "backward_k": 100,
+    "forward_k": 10,
+    "no_cv2": false,
+    "no_center": false,
+    "padding": 0.08,
+    "background": "input/background_sample.png",
+    "debug": true
+  }
+}
