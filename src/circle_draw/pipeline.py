@@ -95,6 +95,7 @@ def run(
     quality_threshold: float = 1.0,
     forward_k: int = 10,
     backward_k: int = 10,
+    sharp_turn_threshold: float = float("inf"),
     use_cv2_preprocessing: bool = True,
     center_on_canvas: bool = True,
     output_padding_fraction: float = 0.08,
@@ -109,6 +110,7 @@ def run(
     min_contour_points: skip contours shorter than this.
     min_circles: skip contours that produce fewer fitted circles than this.
     forward_k: max number of new points to try accepting in one refit batch.
+    sharp_turn_threshold: reject candidate batches containing any local turn above this radians threshold.
     use_cv2_preprocessing: if True, equalise + denoise before extracting contours.
     center_on_canvas: if True, fit and center kept contours on the output canvas.
     output_padding_fraction: canvas fraction reserved as padding on each side.
@@ -148,11 +150,12 @@ def run(
             collector.set_contour(points, _video_idx, _video_total)
             frame_cb = collector.make_callback()
 
-        _, circles, segment_points = segment(
+        _, circles, segment_points, segment_metadata = segment(
             points,
             quality_threshold=quality_threshold,
             forward_k=forward_k,
             backward_k=backward_k,
+            sharp_turn_threshold=sharp_turn_threshold,
             frame_callback=frame_cb,
         )
 
@@ -162,6 +165,17 @@ def run(
 
         if len(circles) < min_circles:
             continue
+
+        if debug_dir:
+            from circle_draw.debug_plots import save_turn_sharpness_map
+            save_turn_sharpness_map(
+                points=points,
+                segment_points=segment_points,
+                segment_metadata=segment_metadata,
+                contour_idx=_video_idx - 1 if collector is not None else len(all_contours),
+                sharp_turn_threshold=sharp_turn_threshold,
+                debug_dir=debug_dir,
+            )
 
         arcs = build_circle_arcs(circles, segment_points)
 

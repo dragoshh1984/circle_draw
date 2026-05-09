@@ -49,5 +49,9 @@ The command creates a timestamped run directory under `outputs/`. The default
 canvas is 1920×1080. Kept contours are fitted and centered on the canvas
 automatically; use `--no-center` to keep source-image coordinates.
 
+Use `--sharp-turn-threshold` (radians) to reject forward/backward candidate
+point batches containing local contour kinks above the threshold.
+
+
 Add `--debug` to write step-by-step fitting videos into the run's `debug/`
 directory.

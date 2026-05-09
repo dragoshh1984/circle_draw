@@ -24,13 +24,15 @@ def _save_config(args: argparse.Namespace, run_dir: str, output_path: str) -> No
     defaults = {
         "width": 1920, "height": 1080, "threshold": 199.0, "step": 5,
         "min_points": 40, "min_circles": 1, "quality_threshold": 1.0,
-        "forward_k": 10, "backward_k": 10, "background": DEFAULT_BACKGROUND,
+        "forward_k": 10, "backward_k": 10, "sharp_turn_threshold": float("inf"),
+        "background": DEFAULT_BACKGROUND,
         "no_cv2": False, "no_center": False, "padding": 0.08, "debug": False,
     }
     flag_map = {
         "width": "--width", "height": "--height", "threshold": "--threshold",
         "step": "--step", "min_points": "--min-points", "min_circles": "--min-circles",
         "quality_threshold": "--quality-threshold", "forward_k": "--forward-k", "backward_k": "--backward-k",
+        "sharp_turn_threshold": "--sharp-turn-threshold",
         "background": "--background", "no_cv2": "--no-cv2", "no_center": "--no-center",
         "padding": "--padding", "debug": "--debug",
     }
@@ -94,6 +96,10 @@ def main() -> None:
         help="Try accepting up to K new points per forward refit, shrinking to 0 on failure (default: 10)"
     )
     parser.add_argument(
+        "--sharp-turn-threshold", type=float, default=float("inf"),
+        help="Reject candidate point batches containing local turns above this radian threshold (default: inf)"
+    )
+    parser.add_argument(
         "--no-cv2", action="store_true",
         help="Use plain skimage contours (no cv2 preprocessing)"
     )
@@ -134,6 +140,7 @@ def main() -> None:
         quality_threshold=args.quality_threshold,
         forward_k=args.forward_k,
         backward_k=args.backward_k,
+        sharp_turn_threshold=args.sharp_turn_threshold,
         use_cv2_preprocessing=not args.no_cv2,
         center_on_canvas=not args.no_center,
         output_padding_fraction=args.padding,
