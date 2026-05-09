@@ -23,16 +23,31 @@ def _save_config(args: argparse.Namespace, run_dir: str, output_path: str) -> No
     flags: list[str] = ["uv run python scripts/run.py", args.image, args.output_dir]
     defaults = {
         "width": 1920, "height": 1080, "threshold": 199.0, "step": 5,
+        "contour_leveling_scale": 0.35,
+        "contour_turn_preserve_threshold": 0.75,
+        "contour_turn_preserve_radius": 1,
         "min_points": 40, "min_circles": 1, "quality_threshold": 1.0,
-        "forward_k": 10, "backward_k": 10, "sharp_turn_threshold": float("inf"),
+        "forward_k": 10, "backward_k": 10,
+        "sharp_turn_threshold": float("inf"), "sharp_turn_min_count": 1,
+        "sharp_turn_method": "circle", "poly_window_radius": 7,
+        "poly_high_degree": 5, "poly_improvement_ratio": 2.0,
+        "max_circle_radius": 500.0,
         "background": DEFAULT_BACKGROUND,
         "no_cv2": False, "no_center": False, "padding": 0.08, "debug": False,
     }
     flag_map = {
         "width": "--width", "height": "--height", "threshold": "--threshold",
         "step": "--step", "min_points": "--min-points", "min_circles": "--min-circles",
+        "contour_leveling_scale": "--contour-leveling-scale",
+        "contour_turn_preserve_threshold": "--contour-turn-preserve-threshold",
+        "contour_turn_preserve_radius": "--contour-turn-preserve-radius",
         "quality_threshold": "--quality-threshold", "forward_k": "--forward-k", "backward_k": "--backward-k",
-        "sharp_turn_threshold": "--sharp-turn-threshold",
+        "sharp_turn_threshold": "--sharp-turn-threshold", "sharp_turn_min_count": "--sharp-turn-min-count",
+        "sharp_turn_method": "--sharp-turn-method",
+        "poly_window_radius": "--poly-window-radius",
+        "poly_high_degree": "--poly-high-degree",
+        "poly_improvement_ratio": "--poly-improvement-ratio",
+        "max_circle_radius": "--max-circle-radius",
         "background": "--background", "no_cv2": "--no-cv2", "no_center": "--no-center",
         "padding": "--padding", "debug": "--debug",
     }
@@ -76,6 +91,18 @@ def main() -> None:
         help="Subsample contour every N points (default: 5)"
     )
     parser.add_argument(
+        "--contour-leveling-scale", type=float, default=0.35,
+        help="Contour leveling down/up scale in (0,1]; lower smooths more (default: 0.35)"
+    )
+    parser.add_argument(
+        "--contour-turn-preserve-threshold", type=float, default=0.75,
+        help="Preserve strong turns above this local raw angle (radians, default: 0.75)"
+    )
+    parser.add_argument(
+        "--contour-turn-preserve-radius", type=int, default=1,
+        help="Preserve this many neighbours around each strong turn (default: 1)"
+    )
+    parser.add_argument(
         "--min-points", type=int, default=40,
         help="Skip contours shorter than this (default: 40)"
     )
@@ -98,6 +125,30 @@ def main() -> None:
     parser.add_argument(
         "--sharp-turn-threshold", type=float, default=float("inf"),
         help="Reject candidate point batches containing local turns above this radian threshold (default: inf)"
+    )
+    parser.add_argument(
+        "--sharp-turn-min-count", type=int, default=1,
+        help="Reject a candidate batch only if at least this many points are sharp (default: 1)"
+    )
+    parser.add_argument(
+        "--sharp-turn-method", choices=["circle", "poly"], default="circle",
+        help="Sharp-turn detector to use (default: circle)"
+    )
+    parser.add_argument(
+        "--poly-window-radius", type=int, default=7,
+        help="Half-window size for local polynomial turn detector (default: 7)"
+    )
+    parser.add_argument(
+        "--poly-high-degree", type=int, default=5,
+        help="High polynomial degree used against quadratic baseline (default: 5)"
+    )
+    parser.add_argument(
+        "--poly-improvement-ratio", type=float, default=2.0,
+        help="Reject when high-degree polynomial MSE beats quadratic by this ratio (default: 2.0)"
+    )
+    parser.add_argument(
+        "--max-circle-radius", type=float, default=500.0,
+        help="Maximum allowed fitted circle radius; larger circles are rejected (default: 500)"
     )
     parser.add_argument(
         "--no-cv2", action="store_true",
@@ -135,12 +186,21 @@ def main() -> None:
         image_shape=(args.width, args.height, 4),
         threshold=args.threshold,
         contour_step=args.step,
+        contour_leveling_scale=args.contour_leveling_scale,
+        contour_turn_preserve_threshold=args.contour_turn_preserve_threshold,
+        contour_turn_preserve_radius=args.contour_turn_preserve_radius,
         min_contour_points=args.min_points,
         min_circles=args.min_circles,
         quality_threshold=args.quality_threshold,
         forward_k=args.forward_k,
         backward_k=args.backward_k,
         sharp_turn_threshold=args.sharp_turn_threshold,
+        sharp_turn_min_count=args.sharp_turn_min_count,
+        sharp_turn_method=args.sharp_turn_method,
+        poly_window_radius=args.poly_window_radius,
+        poly_high_degree=args.poly_high_degree,
+        poly_improvement_ratio=args.poly_improvement_ratio,
+        max_circle_radius=args.max_circle_radius,
         use_cv2_preprocessing=not args.no_cv2,
         center_on_canvas=not args.no_center,
         output_padding_fraction=args.padding,

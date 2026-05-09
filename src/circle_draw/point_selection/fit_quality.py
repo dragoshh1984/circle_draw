@@ -49,6 +49,12 @@ def _fit_quality(circle: Circle, points: Sequence[Point]) -> float:
     return len(points) / relative_dev
 
 
+def _radius_allowed(circle: Circle, max_circle_radius: float) -> bool:
+    if not np.isfinite(max_circle_radius):
+        return True
+    return abs(float(circle[2])) <= float(max_circle_radius)
+
+
 def _turn_angle_at_index(points: np.ndarray, index: int, circle: Circle) -> float:
     """Return the residual turn beyond what the fitted circle predicts (radians).
 
@@ -90,17 +96,112 @@ def _turn_angle_at_index(points: np.ndarray, index: int, circle: Circle) -> floa
     return max(0.0, raw_turn - arc_angle)
 
 
+def _poly_improvement_ratio_at_index(
+    points: np.ndarray,
+    index: int,
+    poly_window_radius: int,
+    poly_high_degree: int,
+) -> float:
+    """Return MSE improvement ratio of high-degree vs quadratic fit.
+
+    Points are locally rotated with PCA so y=f(x) fitting is meaningful.
+    Values near 1 indicate little gain from higher degree; larger values
+    indicate non-quadratic local behaviour (possible turn/kink).
+    """
+    n = len(points)
+    if n < 7:
+        return 1.0
+
+    radius = max(3, int(poly_window_radius))
+    deg_hi_req = max(3, int(poly_high_degree))
+    local_indices = np.array([
+        (index + offset) % n
+        for offset in range(-radius, radius + 1)
+    ], dtype=int)
+    local = points[local_indices]
+
+    centroid = np.mean(local, axis=0)
+    centered = local - centroid
+    try:
+        _, _, vh = np.linalg.svd(centered, full_matrices=False)
+    except np.linalg.LinAlgError:
+        return 1.0
+    if vh.shape[0] < 2:
+        return 1.0
+
+    rotated = centered @ vh[:2].T
+    x_raw = rotated[:, 0]
+    y_raw = rotated[:, 1]
+
+    # Merge duplicate x samples to stabilize polynomial fitting.
+    x_round = np.round(x_raw, 8)
+    x_unique, inv = np.unique(x_round, return_inverse=True)
+    y_acc = np.zeros_like(x_unique, dtype=float)
+    c_acc = np.zeros_like(x_unique, dtype=float)
+    for i, group in enumerate(inv):
+        y_acc[group] += y_raw[i]
+        c_acc[group] += 1.0
+    y_unique = y_acc / np.maximum(c_acc, 1.0)
+
+    if len(x_unique) < 6:
+        return 1.0
+
+    order = np.argsort(x_unique)
+    x = x_unique[order]
+    y = y_unique[order]
+    deg_hi = min(deg_hi_req, len(x) - 1)
+    if deg_hi < 3:
+        return 1.0
+
+    try:
+        quad_coef = np.polyfit(x, y, deg=2)
+        hi_coef = np.polyfit(x, y, deg=deg_hi)
+    except np.linalg.LinAlgError:
+        return 1.0
+
+    quad_pred = np.polyval(quad_coef, x)
+    hi_pred = np.polyval(hi_coef, x)
+    mse_quad = float(np.mean((y - quad_pred) ** 2))
+    mse_hi = float(np.mean((y - hi_pred) ** 2))
+    eps = np.finfo(float).eps
+    return mse_quad / max(mse_hi, eps)
+
+
 def _batch_has_sharp_turn(
     contour_points: np.ndarray,
     contour_indices: np.ndarray,
     circle: Circle,
     sharp_turn_threshold: float,
+    sharp_turn_min_count: int = 1,
+    sharp_turn_method: str = "circle",
+    poly_window_radius: int = 7,
+    poly_high_degree: int = 5,
+    poly_improvement_ratio: float = 2.0,
 ) -> bool:
-    if not np.isfinite(sharp_turn_threshold):
+    method = sharp_turn_method.lower()
+    if method == "circle" and not np.isfinite(sharp_turn_threshold):
         return False
+    if method == "poly" and not np.isfinite(poly_improvement_ratio):
+        return False
+
+    required_count = max(1, int(sharp_turn_min_count))
+    required_count = min(required_count, len(contour_indices))
+    sharp_count = 0
     for idx in contour_indices:
-        if _turn_angle_at_index(contour_points, int(idx), circle) > sharp_turn_threshold:
-            return True
+        if method == "poly":
+            is_sharp = _poly_improvement_ratio_at_index(
+                contour_points,
+                int(idx),
+                poly_window_radius=poly_window_radius,
+                poly_high_degree=poly_high_degree,
+            ) >= poly_improvement_ratio
+        else:
+            is_sharp = _turn_angle_at_index(contour_points, int(idx), circle) > sharp_turn_threshold
+
+        if is_sharp:
+            sharp_count += 1
+            if sharp_count >= required_count:
+                return True
     return False
 
 
@@ -135,6 +236,12 @@ def _extend_backward(
     quality_threshold: float,
     k: int,
     sharp_turn_threshold: float,
+    sharp_turn_min_count: int,
+    sharp_turn_method: str,
+    poly_window_radius: int,
+    poly_high_degree: int,
+    poly_improvement_ratio: float,
+    max_circle_radius: float,
     min_preceding_points: int = MIN_SEGMENT_POINTS,
 ) -> tuple[Circle, np.ndarray, np.ndarray, int]:
     """Try to prepend up to k trailing points from preceding into pts.
@@ -154,7 +261,19 @@ def _extend_backward(
         extended = np.concatenate(([candidates[i]], pts))
         extended_indices = np.concatenate((candidate_index, pts_indices))
         new_circle = fit(circle, extended)
-        if _batch_has_sharp_turn(contour_points, candidate_index, new_circle, sharp_turn_threshold):
+        if not _radius_allowed(new_circle, max_circle_radius):
+            break
+        if _batch_has_sharp_turn(
+            contour_points,
+            candidate_index,
+            new_circle,
+            sharp_turn_threshold,
+            sharp_turn_min_count=sharp_turn_min_count,
+            sharp_turn_method=sharp_turn_method,
+            poly_window_radius=poly_window_radius,
+            poly_high_degree=poly_high_degree,
+            poly_improvement_ratio=poly_improvement_ratio,
+        ):
             break
 
         new_quality = _fit_quality(new_circle, extended)
@@ -176,6 +295,12 @@ def segment(
     forward_k: int = 10,
     backward_k: int = 10,
     sharp_turn_threshold: float = float("inf"),
+    sharp_turn_min_count: int = 1,
+    sharp_turn_method: str = "circle",
+    poly_window_radius: int = 7,
+    poly_high_degree: int = 5,
+    poly_improvement_ratio: float = 2.0,
+    max_circle_radius: float = float("inf"),
     frame_callback: Optional[Callable[[dict], None]] = None,
 ) -> tuple[np.ndarray, list[Circle], list[np.ndarray], list[SegmentShapeMetadata]]:
     """Split a contour into circular arc segments using fit quality.
@@ -225,6 +350,12 @@ def segment(
             "quality_threshold": _required_quality_ratio(quality_threshold),
             "configured_quality_threshold": quality_threshold,
             "sharp_turn_threshold": sharp_turn_threshold,
+            "sharp_turn_min_count": max(1, int(sharp_turn_min_count)),
+            "sharp_turn_method": sharp_turn_method,
+            "poly_window_radius": poly_window_radius,
+            "poly_high_degree": poly_high_degree,
+            "poly_improvement_ratio": poly_improvement_ratio,
+            "max_circle_radius": max_circle_radius,
             "stop_reason": stop_reason,
             "rejection_reason": rejection_reason,
             "attempted_batch_size": attempted_batch_size,
@@ -276,7 +407,20 @@ def segment(
                 extended = np.concatenate((current_pts, batch))
                 new_circle = fit(current_circle, extended)
                 new_quality = _fit_quality(new_circle, extended)
-                if _batch_has_sharp_turn(points, batch_indices, new_circle, sharp_turn_threshold):
+                if not _radius_allowed(new_circle, max_circle_radius):
+                    last_rejected = (batch_size, current_quality, "radius")
+                    continue
+                if _batch_has_sharp_turn(
+                    points,
+                    batch_indices,
+                    new_circle,
+                    sharp_turn_threshold,
+                    sharp_turn_min_count=sharp_turn_min_count,
+                    sharp_turn_method=sharp_turn_method,
+                    poly_window_radius=poly_window_radius,
+                    poly_high_degree=poly_high_degree,
+                    poly_improvement_ratio=poly_improvement_ratio,
+                ):
                     last_rejected = (batch_size, current_quality, "sharp_turn")
                     continue
 
@@ -311,6 +455,11 @@ def segment(
                     stop_reason = (
                         f"best batch {rejected_count} rejected due to sharp turn over "
                         f"threshold {sharp_turn_threshold:.3f} rad"
+                    )
+                elif rejection_reason == "radius":
+                    stop_reason = (
+                        f"best batch {rejected_count} rejected because circle radius exceeded "
+                        f"max {max_circle_radius:.2f}"
                     )
                 else:
                     stop_reason = (
@@ -360,6 +509,12 @@ def segment(
             quality_threshold,
             backward_k,
             sharp_turn_threshold,
+            sharp_turn_min_count,
+            sharp_turn_method,
+            poly_window_radius,
+            poly_high_degree,
+            poly_improvement_ratio,
+            max_circle_radius,
         )
         if absorbed:
             seg_point_arrays[-1] = seg_point_arrays[-1][: len(seg_point_arrays[-1]) - absorbed]
