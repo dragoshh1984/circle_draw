@@ -160,3 +160,73 @@ def save_arc_boundaries(
     fig.tight_layout()
     fig.savefig(os.path.join(debug_dir, f"03_boundaries_{contour_idx:03d}.png"), dpi=120)
     plt.close(fig)
+
+
+def save_turn_sharpness_map(
+    points: np.ndarray,
+    segment_points: list[np.ndarray],
+    segment_metadata: list,
+    contour_idx: int,
+    sharp_turn_threshold: float,
+    debug_dir: str,
+) -> None:
+    """Plot local turn angles per point and highlight sharp points."""
+    _ensure(debug_dir)
+
+    all_x = points[:, 0]
+    all_y = points[:, 1]
+    pad = max((all_x.max() - all_x.min()), (all_y.max() - all_y.min())) * 0.1 + 10
+    xmin, xmax = all_x.min() - pad, all_x.max() + pad
+    ymin, ymax = all_y.min() - pad, all_y.max() + pad
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_xlim(xmin, xmax)
+    ax.set_ylim(ymax, ymin)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    all_turn = np.concatenate([m.turn_angles for m in segment_metadata]) if segment_metadata else np.array([0.0])
+    vmax = max(float(np.max(all_turn)), max(1e-6, sharp_turn_threshold if np.isfinite(sharp_turn_threshold) else 0.0))
+
+    sharp_total = 0
+    for seg_pts, seg_meta in zip(segment_points, segment_metadata):
+        turn_angles = np.array(seg_meta.turn_angles, dtype=float)
+        is_sharp = np.array(seg_meta.is_sharp, dtype=bool)
+        sharp_total += int(np.sum(is_sharp))
+
+        scatter = ax.scatter(
+            seg_pts[:, 0],
+            seg_pts[:, 1],
+            c=turn_angles,
+            cmap="plasma",
+            vmin=0.0,
+            vmax=vmax,
+            s=14,
+            zorder=2,
+        )
+
+        if np.any(is_sharp):
+            sharp_pts = seg_pts[is_sharp]
+            ax.scatter(
+                sharp_pts[:, 0],
+                sharp_pts[:, 1],
+                facecolors="none",
+                edgecolors="#00ffff",
+                linewidths=0.9,
+                s=42,
+                zorder=3,
+            )
+
+    title_threshold = "inf" if not np.isfinite(sharp_turn_threshold) else f"{sharp_turn_threshold:.3f}"
+    ax.set_title(
+        f"Contour {contour_idx:03d} — turn-angle sharpness (sharp {sharp_total}, thr={title_threshold} rad)"
+    )
+
+    cbar = fig.colorbar(scatter, ax=ax, fraction=0.045, pad=0.02)
+    cbar.set_label("local turn angle [rad]")
+    if np.isfinite(sharp_turn_threshold):
+        cbar.ax.axhline(sharp_turn_threshold, color="cyan", linewidth=1.0)
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(debug_dir, f"04_turn_sharpness_{contour_idx:03d}.png"), dpi=120)
+    plt.close(fig)

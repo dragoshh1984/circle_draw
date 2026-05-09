@@ -90,11 +90,21 @@ def run(
     image_shape: tuple[int, int, int] = (1920, 1080, 4),
     threshold: float = 199.0,
     contour_step: int = 5,
+    contour_leveling_scale: float = 0.35,
+    contour_turn_preserve_threshold: float = 0.75,
+    contour_turn_preserve_radius: int = 1,
     min_contour_points: int = 40,
     min_circles: int = 1,
     quality_threshold: float = 1.0,
     forward_k: int = 10,
     backward_k: int = 10,
+    sharp_turn_threshold: float = float("inf"),
+    sharp_turn_min_count: int = 1,
+    sharp_turn_method: str = "circle",
+    poly_window_radius: int = 7,
+    poly_high_degree: int = 5,
+    poly_improvement_ratio: float = 2.0,
+    max_circle_radius: float = 500.0,
     use_cv2_preprocessing: bool = True,
     center_on_canvas: bool = True,
     output_padding_fraction: float = 0.08,
@@ -106,9 +116,19 @@ def run(
     image_shape: (width, height, 4) — matches Cairo's width/height convention.
     threshold:   marching-squares contour level.
     contour_step: subsample every Nth contour point.
+    contour_leveling_scale: contour down/up resampling scale used to level noise.
+    contour_turn_preserve_threshold: preserve points whose local turn exceeds this radians threshold.
+    contour_turn_preserve_radius: keep this many neighbours around preserved turn points.
     min_contour_points: skip contours shorter than this.
     min_circles: skip contours that produce fewer fitted circles than this.
     forward_k: max number of new points to try accepting in one refit batch.
+    sharp_turn_threshold: reject candidate batches containing any local turn above this radians threshold.
+    sharp_turn_min_count: reject only when at least this many points in a candidate batch are sharp.
+    sharp_turn_method: sharp-turn detector to use: circle or poly.
+    poly_window_radius: half-window (in points) for local polynomial detector.
+    poly_high_degree: high polynomial degree used against quadratic baseline.
+    poly_improvement_ratio: reject when high-degree fit improves over quadratic by at least this ratio.
+    max_circle_radius: maximum allowed fitted circle radius; circles above this are rejected.
     use_cv2_preprocessing: if True, equalise + denoise before extracting contours.
     center_on_canvas: if True, fit and center kept contours on the output canvas.
     output_padding_fraction: canvas fraction reserved as padding on each side.
@@ -123,6 +143,14 @@ def run(
         from circle_draw.contour_extraction.skimage_marching import load_and_extract
 
     contours_all = load_and_extract(image_path, threshold=threshold, step=contour_step)
+
+    from circle_draw.contour_extraction.leveling import level_contours
+    contours_all = level_contours(
+        contours_all,
+        downsample_scale=contour_leveling_scale,
+        preserve_turn_threshold=contour_turn_preserve_threshold,
+        preserve_radius=contour_turn_preserve_radius,
+    )
 
     # Set up video collector if debug is requested
     collector = None
@@ -148,11 +176,18 @@ def run(
             collector.set_contour(points, _video_idx, _video_total)
             frame_cb = collector.make_callback()
 
-        _, circles, segment_points = segment(
+        _, circles, segment_points, segment_metadata = segment(
             points,
             quality_threshold=quality_threshold,
             forward_k=forward_k,
             backward_k=backward_k,
+            sharp_turn_threshold=sharp_turn_threshold,
+            sharp_turn_min_count=sharp_turn_min_count,
+            sharp_turn_method=sharp_turn_method,
+            poly_window_radius=poly_window_radius,
+            poly_high_degree=poly_high_degree,
+            poly_improvement_ratio=poly_improvement_ratio,
+            max_circle_radius=max_circle_radius,
             frame_callback=frame_cb,
         )
 
@@ -162,6 +197,28 @@ def run(
 
         if len(circles) < min_circles:
             continue
+
+        if np.isfinite(max_circle_radius):
+            kept_pairs = [
+                (c, s, m) for c, s, m in zip(circles, segment_points, segment_metadata)
+                if abs(float(c[2])) <= float(max_circle_radius)
+            ]
+            if not kept_pairs:
+                continue
+            circles = [c for c, _, _ in kept_pairs]
+            segment_points = [s for _, s, _ in kept_pairs]
+            segment_metadata = [m for _, _, m in kept_pairs]
+
+        if debug_dir:
+            from circle_draw.debug_plots import save_turn_sharpness_map
+            save_turn_sharpness_map(
+                points=points,
+                segment_points=segment_points,
+                segment_metadata=segment_metadata,
+                contour_idx=_video_idx - 1 if collector is not None else len(all_contours),
+                sharp_turn_threshold=sharp_turn_threshold,
+                debug_dir=debug_dir,
+            )
 
         arcs = build_circle_arcs(circles, segment_points)
 
