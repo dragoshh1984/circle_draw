@@ -84,6 +84,7 @@ def run(
     min_contour_points: int = 40,
     min_circles: int = 3,
     quality_threshold: float = 0.8,
+    backward_k: int = 10,
     use_cv2_preprocessing: bool = True,
     center_on_canvas: bool = True,
     output_padding_fraction: float = 0.08,
@@ -119,7 +120,7 @@ def run(
         if len(points) < min_contour_points:
             continue
 
-        end_pts, circles = segment(points, quality_threshold=quality_threshold)
+        end_pts, circles = segment(points, quality_threshold=quality_threshold, backward_k=backward_k)
 
         if len(circles) < min_circles:
             continue
