@@ -109,6 +109,7 @@ def run(
     center_on_canvas: bool = True,
     output_padding_fraction: float = 0.08,
     background_path: Optional[str] = None,
+    background_scale: float = 1.0,
     debug_dir: Optional[str] = None,
 ) -> None:
     """Convert image to a circle-arc drawing and save as transparent PNG.
@@ -133,9 +134,10 @@ def run(
     center_on_canvas: if True, fit and center kept contours on the output canvas.
     output_padding_fraction: canvas fraction reserved as padding on each side.
     background_path: optional image to draw behind the final render.
+    background_scale: resize factor applied to background image before compositing.
     debug_dir:   if set, save step-by-step plots here.
     """
-    render_shape = resolve_render_shape(image_shape, background_path)
+    render_shape = resolve_render_shape(image_shape, background_path, background_scale=background_scale)
 
     if use_cv2_preprocessing:
         from circle_draw.contour_extraction.cv2_enhanced import load_and_extract
@@ -238,7 +240,13 @@ def run(
     print(f"Rendering {len(all_contours)} contours ({sum(len(c) for c in all_circles)} circles total)")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    render(all_arcs, render_shape, output_path, background_path=background_path)
+    render(
+        all_arcs,
+        render_shape,
+        output_path,
+        background_path=background_path,
+        background_scale=background_scale,
+    )
     print(f"Saved → {output_path}")
 
     if collector is not None:

@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-05-09T22:57:38",
-  "command": "uv run python scripts/run.py input/kakapo_logo.png outputs/ --quality-threshold 0.8 --backward-k 100 --sharp-turn-min-count 2 --sharp-turn-method poly --poly-window-radius 10 --poly-high-degree 8 --poly-improvement-ratio 2.5 --debug",
-  "output": "outputs/20260509_225732_kakapo_logo/result.png",
+  "timestamp": "2026-05-10T13:56:36",
+  "command": "uv run python scripts/run.py input/kakapo_logo.png outputs/ --quality-threshold 0.8 --backward-k 100 --sharp-turn-min-count 2 --sharp-turn-method poly --poly-window-radius 10 --poly-high-degree 8 --poly-improvement-ratio 2.5 --background-scale 0.8 --debug",
+  "output": "outputs/20260510_135632_kakapo_logo/result.png",
   "parameters": {
     "image": "input/kakapo_logo.png",
     "output_dir": "outputs/",
@@ -28,6 +28,7 @@
     "no_center": false,
     "padding": 0.08,
     "background": "input/background_sample.png",
+    "background_scale": 0.8,
     "debug": true
   }
 }

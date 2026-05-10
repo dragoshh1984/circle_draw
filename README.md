@@ -17,6 +17,7 @@ uv run python scripts/run.py input/kakapo_logo.png outputs/ \
 	--quality-threshold 0.8 --forward-k 10 --backward-k 100 --padding 0.08 \
 	--sharp-turn-method poly --poly-window-radius 10 --poly-high-degree 8 \
 	--poly-improvement-ratio 2.5 --max-circle-radius 500 \
+	--background-scale 0.8 \
 	--sharp-turn-min-count 2 --debug
 ```
 
