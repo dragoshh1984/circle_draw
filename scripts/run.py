@@ -32,6 +32,10 @@ def _save_config(args: argparse.Namespace, run_dir: str, output_path: str) -> No
         "sharp_turn_method": "circle", "poly_window_radius": 7,
         "poly_high_degree": 5, "poly_improvement_ratio": 2.0,
         "max_circle_radius": 500.0,
+        "cv2_no_equalize": False,
+        "cv2_denoise_h": 30.0,
+        "cv2_denoise_template_window": 3,
+        "cv2_denoise_search_window": 21,
         "background": DEFAULT_BACKGROUND,
         "background_scale": 1.0,
         "no_cv2": False, "no_center": False, "padding": 0.08, "debug": False,
@@ -49,11 +53,15 @@ def _save_config(args: argparse.Namespace, run_dir: str, output_path: str) -> No
         "poly_high_degree": "--poly-high-degree",
         "poly_improvement_ratio": "--poly-improvement-ratio",
         "max_circle_radius": "--max-circle-radius",
+        "cv2_no_equalize": "--cv2-no-equalize",
+        "cv2_denoise_h": "--cv2-denoise-h",
+        "cv2_denoise_template_window": "--cv2-denoise-template-window",
+        "cv2_denoise_search_window": "--cv2-denoise-search-window",
         "background": "--background", "background_scale": "--background-scale",
         "no_cv2": "--no-cv2", "no_center": "--no-center",
         "padding": "--padding", "debug": "--debug",
     }
-    bool_flags = {"no_cv2", "no_center", "debug"}
+    bool_flags = {"no_cv2", "no_center", "debug", "cv2_no_equalize"}
     for key, flag in flag_map.items():
         val = params.get(key)
         default = defaults.get(key)
@@ -153,6 +161,22 @@ def main() -> None:
         help="Maximum allowed fitted circle radius; larger circles are rejected (default: 500)"
     )
     parser.add_argument(
+        "--cv2-no-equalize", action="store_true",
+        help="Disable cv2 histogram equalization before contour extraction"
+    )
+    parser.add_argument(
+        "--cv2-denoise-h", type=float, default=30.0,
+        help="cv2 denoising strength (fastNlMeans); set 0 to disable (default: 30.0)"
+    )
+    parser.add_argument(
+        "--cv2-denoise-template-window", type=int, default=3,
+        help="cv2 denoising template window size (default: 3)"
+    )
+    parser.add_argument(
+        "--cv2-denoise-search-window", type=int, default=21,
+        help="cv2 denoising search window size (default: 21)"
+    )
+    parser.add_argument(
         "--no-cv2", action="store_true",
         help="Use plain skimage contours (no cv2 preprocessing)"
     )
@@ -208,6 +232,10 @@ def main() -> None:
         poly_improvement_ratio=args.poly_improvement_ratio,
         max_circle_radius=args.max_circle_radius,
         use_cv2_preprocessing=not args.no_cv2,
+        cv2_equalize_hist=not args.cv2_no_equalize,
+        cv2_denoise_h=args.cv2_denoise_h,
+        cv2_denoise_template_window=args.cv2_denoise_template_window,
+        cv2_denoise_search_window=args.cv2_denoise_search_window,
         center_on_canvas=not args.no_center,
         output_padding_fraction=args.padding,
         background_path=args.background or None,

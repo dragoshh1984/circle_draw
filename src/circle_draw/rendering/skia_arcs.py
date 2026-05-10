@@ -1,15 +1,12 @@
-"""Cairo-based renderer: draws each selected circle arc opaque."""
+"""Skia-based renderer: draws each selected circle arc opaque."""
 
 import math
 import numpy as np
-import cairo
+import skia
 import imageio.v3 as iio
 
 from circle_draw.circle_geometry.arcs import CircleArc
 from circle_draw.circle_geometry.intersections import Circle, Point
-
-# ARGB channel order when using cairo.FORMAT_ARGB32 with numpy buffers.
-# image_shape convention: (width, height, 4) — width=cairo_width, height=cairo_height.
 
 
 def _to_rgba(image: np.ndarray) -> np.ndarray:
@@ -83,20 +80,22 @@ def _load_background(background_path: str, width: int, height: int, background_s
 
 
 def _composite_over_background(layer: np.ndarray, background: np.ndarray) -> np.ndarray:
+    """Composite layer (RGBA) over background (RGBA) using straight-alpha blending."""
     src = layer.astype(np.float32) / 255.0
     bg = background.astype(np.float32) / 255.0
 
     src_alpha = src[:, :, 3:4]
     bg_alpha = bg[:, :, 3:4]
-    src_rgb_premul = src[:, :, [2, 1, 0]]
-    bg_rgb_premul = bg[:, :, :3] * bg_alpha
-
+    
+    # Straight alpha (non-premultiplied) blending.
     out_alpha = src_alpha + bg_alpha * (1.0 - src_alpha)
-    out_rgb_premul = src_rgb_premul + bg_rgb_premul * (1.0 - src_alpha)
+    
+    # Blend RGB channels without premultiplication.
+    out_rgb = src[:, :, :3] * src_alpha + bg[:, :, :3] * bg_alpha * (1.0 - src_alpha)
     out_rgb = np.divide(
-        out_rgb_premul,
+        out_rgb,
         out_alpha,
-        out=np.zeros_like(out_rgb_premul),
+        out=np.zeros_like(out_rgb),
         where=out_alpha > 0,
     )
 
@@ -112,7 +111,8 @@ def arc_boundary_angles(
 ) -> tuple[float, float]:
     """Return (angle_start, angle_stop) for the arc from point1 to point2 on the circle.
 
-    Angles are in radians, measured clockwise from the positive-x axis (Cairo convention).
+    Angles are in radians, measured clockwise from the positive-x axis (standard convention).
+    Used by debug plots and geometry helpers.
     """
     return CircleArc.from_boundaries(
         circle=circle,
@@ -132,44 +132,86 @@ def render(
     ghost_alpha: float = 0.1,
     arc_line_width: float = 3.0,
 ) -> None:
-    """Render all arcs onto a transparent canvas and write to output_path.
+    """Render all arcs onto a transparent canvas and write to output_path using Skia.
 
     image_shape: (width, height, channels=4)
     """
     width, height, channels = image_shape
-    assert channels == 4, "Cairo requires 4-channel ARGB image"
+    assert channels == 4, "Renderer requires 4-channel RGBA image"
 
-    layer = np.zeros((height, width, channels), dtype=np.uint8)
-    surface = cairo.ImageSurface.create_for_data(layer, cairo.FORMAT_ARGB32, width, height)
-    cr = cairo.Context(surface)
-    cr.set_source_rgba(1.0, 1.0, 1.0, 0.0)
-    cr.paint()
+    # Create Skia raster surface with premultiplied RGBA.
+    surface = skia.Surface.MakeRasterN32Premul(width, height)
+    assert surface is not None, "Failed to create Skia surface"
+    canvas = surface.getCanvas()
+    
+    # Clear to transparent.
+    canvas.clear(skia.Color4f(0.0, 0.0, 0.0, 0.0))
 
     r, g, b = arc_color
+
+    # Set up stroke paint.
+    paint = skia.Paint()
+    paint.setAntiAlias(True)
+    paint.setStyle(skia.Paint.kStroke_Style)
+    paint.setStrokeWidth(arc_line_width)
 
     for arcs in arcs_per_contour:
         for selected_arc in arcs:
             circle = selected_arc.circle
+            cx, cy, radius = circle
 
+            # Draw ghost circle if alpha > 0.
             if ghost_alpha > 0:
-                cr.set_source_rgba(r, g, b, ghost_alpha)
-                cr.arc(circle[0], circle[1], circle[2], 0, 2 * math.pi)
-                cr.set_line_width(arc_line_width)
-                cr.stroke()
+                color = skia.ColorSetARGB(
+                    int(ghost_alpha * 255),
+                    int(r * 255),
+                    int(g * 255),
+                    int(b * 255),
+                )
+                paint.setColor(color)
+                canvas.drawCircle(cx, cy, radius, paint)
 
-            # draw the active arc fully opaque
+            # Draw the active arc fully opaque.
             a_start, a_stop = selected_arc.cairo_angles()
-            cr.set_source_rgba(r, g, b, 1.0)
+            
+            # Convert from radians to degrees.
+            start_deg = math.degrees(a_start)
+            stop_deg = math.degrees(a_stop)
+            
+            # Match Cairo arc semantics: preserve direction and wraparound.
+            # Skia uses degrees with positive sweep clockwise, negative counter-clockwise.
             if selected_arc.clockwise:
-                cr.arc(circle[0], circle[1], circle[2], a_start, a_stop)
+                sweep_deg = (stop_deg - start_deg) % 360.0
+                if sweep_deg == 0.0:
+                    sweep_deg = 360.0
             else:
-                cr.arc_negative(circle[0], circle[1], circle[2], a_start, a_stop)
-            cr.set_line_width(arc_line_width)
-            cr.stroke()
+                sweep_deg = -((start_deg - stop_deg) % 360.0)
+                if sweep_deg == 0.0:
+                    sweep_deg = -360.0
 
-    surface.flush()
+            color = skia.ColorSetARGB(255, int(r * 255), int(g * 255), int(b * 255))
+            paint.setColor(color)
+            
+            # Create rectangle for arc bounds.
+            rect = skia.Rect.MakeXYWH(cx - radius, cy - radius, 2 * radius, 2 * radius)
+            canvas.drawArc(rect, start_deg, sweep_deg, False, paint)
+
+    # Read pixels into a numpy array with explicit RGBA color type.
+    image = surface.makeImageSnapshot()
+    width_actual = image.width()
+    height_actual = image.height()
+    
+    # Create a numpy buffer for pixels and use Pixmap to read them.
+    # Allocate buffer for RGBA pixels (4 bytes per pixel).
+    layer = np.zeros((height_actual, width_actual, 4), dtype=np.uint8)
+    pixmap = skia.Pixmap(layer, skia.kRGBA_8888_ColorType, skia.kUnpremul_AlphaType)
+    if not image.readPixels(pixmap, 0, 0):
+        raise RuntimeError("Failed to read pixels from Skia surface")
+
+    # Composite and write output.
     if background_path:
         background = _load_background(background_path, width, height, background_scale=background_scale)
         iio.imwrite(output_path, _composite_over_background(layer, background))
     else:
-        surface.write_to_png(output_path)
+        # Write PNG directly from layer.
+        iio.imwrite(output_path, layer)

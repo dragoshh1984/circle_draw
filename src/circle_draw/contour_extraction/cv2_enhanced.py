@@ -5,11 +5,25 @@ import cv2 as cv
 from skimage import measure
 
 
-def preprocess(image: np.ndarray) -> np.ndarray:
-    """Convert to grayscale, equalise histogram, and denoise."""
+def preprocess(
+    image: np.ndarray,
+    equalize_hist: bool = True,
+    denoise_h: float = 30.0,
+    denoise_template_window: int = 3,
+    denoise_search_window: int = 21,
+) -> np.ndarray:
+    """Convert to grayscale, optional equalisation, and configurable denoising."""
     gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    gray = cv.equalizeHist(gray)
-    gray = cv.fastNlMeansDenoising(gray, None, 30, 3, 21)
+    if equalize_hist:
+        gray = cv.equalizeHist(gray)
+    if denoise_h > 0:
+        gray = cv.fastNlMeansDenoising(
+            gray,
+            None,
+            float(denoise_h),
+            int(denoise_template_window),
+            int(denoise_search_window),
+        )
     return gray
 
 
@@ -25,9 +39,23 @@ def extract(image: np.ndarray, threshold: float = 199, step: int = 5) -> list[np
     return result
 
 
-def load_and_extract(image_path: str, threshold: float = 199, step: int = 5) -> list[np.ndarray]:
+def load_and_extract(
+    image_path: str,
+    threshold: float = 199,
+    step: int = 5,
+    equalize_hist: bool = True,
+    denoise_h: float = 30.0,
+    denoise_template_window: int = 3,
+    denoise_search_window: int = 21,
+) -> list[np.ndarray]:
     img = cv.imread(image_path)
     if img is None:
         raise FileNotFoundError(f"Could not load image: {image_path}")
-    preprocessed = preprocess(img)
+    preprocessed = preprocess(
+        img,
+        equalize_hist=equalize_hist,
+        denoise_h=denoise_h,
+        denoise_template_window=denoise_template_window,
+        denoise_search_window=denoise_search_window,
+    )
     return extract(preprocessed, threshold, step)
