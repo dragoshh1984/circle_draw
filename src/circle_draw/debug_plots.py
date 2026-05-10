@@ -136,12 +136,12 @@ def save_arc_boundaries(
 
         # active arc — compute angle range
         if not (np.isnan(fp[0]) or np.isnan(sp[0])):
-            from circle_draw.rendering.cairo_arcs import arc_boundary_angles
             try:
+                from circle_draw.rendering.skia_arcs import arc_boundary_angles
                 a_start, a_stop = arc_boundary_angles(sp, fp, circle)
                 # matplotlib Arc uses degrees, counter-clockwise from east
-                # cairo angles are also from east but clockwise in screen coords (y-down)
-                # converting: matplotlib angle = -cairo_angle (degrees)
+                # arc angles here are clockwise in screen coordinates (y-down)
+                # converting: matplotlib angle = -arc_angle (degrees)
                 deg_start = -math.degrees(a_start)
                 deg_stop = -math.degrees(a_stop)
                 arc = Arc(

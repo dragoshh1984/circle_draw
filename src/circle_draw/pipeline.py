@@ -7,7 +7,7 @@ import numpy as np
 
 from circle_draw.circle_geometry.arcs import CircleArc, build_circle_arcs
 from circle_draw.point_selection.fit_quality import segment
-from circle_draw.rendering.cairo_arcs import render, resolve_render_shape
+from circle_draw.rendering.skia_arcs import render, resolve_render_shape
 
 
 def _centering_transform(
@@ -106,9 +106,14 @@ def run(
     poly_improvement_ratio: float = 2.0,
     max_circle_radius: float = 500.0,
     use_cv2_preprocessing: bool = True,
+    cv2_equalize_hist: bool = True,
+    cv2_denoise_h: float = 30.0,
+    cv2_denoise_template_window: int = 3,
+    cv2_denoise_search_window: int = 21,
     center_on_canvas: bool = True,
     output_padding_fraction: float = 0.08,
     background_path: Optional[str] = None,
+    background_scale: float = 1.0,
     debug_dir: Optional[str] = None,
 ) -> None:
     """Convert image to a circle-arc drawing and save as transparent PNG.
@@ -130,19 +135,35 @@ def run(
     poly_improvement_ratio: reject when high-degree fit improves over quadratic by at least this ratio.
     max_circle_radius: maximum allowed fitted circle radius; circles above this are rejected.
     use_cv2_preprocessing: if True, equalise + denoise before extracting contours.
+    cv2_equalize_hist: apply cv2 histogram equalization before contour extraction.
+    cv2_denoise_h: denoising strength for cv2 fastNlMeansDenoising; 0 disables denoising.
+    cv2_denoise_template_window: denoising template window size.
+    cv2_denoise_search_window: denoising search window size.
     center_on_canvas: if True, fit and center kept contours on the output canvas.
     output_padding_fraction: canvas fraction reserved as padding on each side.
     background_path: optional image to draw behind the final render.
+    background_scale: resize factor applied to background image before compositing.
     debug_dir:   if set, save step-by-step plots here.
     """
-    render_shape = resolve_render_shape(image_shape, background_path)
+    render_shape = resolve_render_shape(image_shape, background_path, background_scale=background_scale)
 
     if use_cv2_preprocessing:
         from circle_draw.contour_extraction.cv2_enhanced import load_and_extract
     else:
         from circle_draw.contour_extraction.skimage_marching import load_and_extract
 
-    contours_all = load_and_extract(image_path, threshold=threshold, step=contour_step)
+    if use_cv2_preprocessing:
+        contours_all = load_and_extract(
+            image_path,
+            threshold=threshold,
+            step=contour_step,
+            equalize_hist=cv2_equalize_hist,
+            denoise_h=cv2_denoise_h,
+            denoise_template_window=cv2_denoise_template_window,
+            denoise_search_window=cv2_denoise_search_window,
+        )
+    else:
+        contours_all = load_and_extract(image_path, threshold=threshold, step=contour_step)
 
     from circle_draw.contour_extraction.leveling import level_contours
     contours_all = level_contours(
@@ -238,7 +259,13 @@ def run(
     print(f"Rendering {len(all_contours)} contours ({sum(len(c) for c in all_circles)} circles total)")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    render(all_arcs, render_shape, output_path, background_path=background_path)
+    render(
+        all_arcs,
+        render_shape,
+        output_path,
+        background_path=background_path,
+        background_scale=background_scale,
+    )
     print(f"Saved → {output_path}")
 
     if collector is not None:
