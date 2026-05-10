@@ -33,6 +33,7 @@ def _save_config(args: argparse.Namespace, run_dir: str, output_path: str) -> No
         "poly_high_degree": 5, "poly_improvement_ratio": 2.0,
         "max_circle_radius": 500.0,
         "background": DEFAULT_BACKGROUND,
+        "background_scale": 1.0,
         "no_cv2": False, "no_center": False, "padding": 0.08, "debug": False,
     }
     flag_map = {
@@ -48,7 +49,8 @@ def _save_config(args: argparse.Namespace, run_dir: str, output_path: str) -> No
         "poly_high_degree": "--poly-high-degree",
         "poly_improvement_ratio": "--poly-improvement-ratio",
         "max_circle_radius": "--max-circle-radius",
-        "background": "--background", "no_cv2": "--no-cv2", "no_center": "--no-center",
+        "background": "--background", "background_scale": "--background-scale",
+        "no_cv2": "--no-cv2", "no_center": "--no-center",
         "padding": "--padding", "debug": "--debug",
     }
     bool_flags = {"no_cv2", "no_center", "debug"}
@@ -167,6 +169,10 @@ def main() -> None:
         help=f"Background image composited under the final result (default: {DEFAULT_BACKGROUND})"
     )
     parser.add_argument(
+        "--background-scale", type=float, default=1.0,
+        help="Scale factor for the background image before compositing (default: 1.0)"
+    )
+    parser.add_argument(
         "--debug", action="store_true",
         help="Save step-by-step debug plots to a 'debug/' dir inside the run folder"
     )
@@ -205,6 +211,7 @@ def main() -> None:
         center_on_canvas=not args.no_center,
         output_padding_fraction=args.padding,
         background_path=args.background or None,
+        background_scale=args.background_scale,
         debug_dir=debug_dir,
     )
     _save_config(args, run_dir, output_path)

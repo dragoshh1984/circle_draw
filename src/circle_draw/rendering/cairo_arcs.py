@@ -32,6 +32,7 @@ def _to_rgba(image: np.ndarray) -> np.ndarray:
 def resolve_render_shape(
     image_shape: tuple[int, int, int],
     background_path: str | None,
+    background_scale: float = 1.0,
 ) -> tuple[int, int, int]:
     if not background_path:
         return image_shape
@@ -39,28 +40,45 @@ def resolve_render_shape(
     width, height, channels = image_shape
     bg_shape = iio.improps(background_path).shape
     bg_height, bg_width = bg_shape[:2]
+    scale = max(0.01, float(background_scale))
+    scaled_w = max(1, int(round(bg_width * scale)))
+    scaled_h = max(1, int(round(bg_height * scale)))
     if bg_width >= width and bg_height >= height:
-        return (bg_width, bg_height, channels)
+        if scaled_w >= width and scaled_h >= height:
+            return (scaled_w, scaled_h, channels)
+        return image_shape
     return image_shape
 
 
 def _fit_background_to_canvas(image: np.ndarray, width: int, height: int) -> np.ndarray:
-    if image.shape[:2] == (height, width):
+    image_height, image_width = image.shape[:2]
+    if image_width == width and image_height == height:
         return image
 
-    image_height, image_width = image.shape[:2]
-    if image_width >= width and image_height >= height:
-        x0 = (image_width - width) // 2
-        y0 = (image_height - height) // 2
-        return image[y0 : y0 + height, x0 : x0 + width]
+    # If larger than canvas, center-crop. If smaller, center-pad with transparency.
+    x0_src = max(0, (image_width - width) // 2)
+    y0_src = max(0, (image_height - height) // 2)
+    x1_src = min(image_width, x0_src + width)
+    y1_src = min(image_height, y0_src + height)
+    crop = image[y0_src:y1_src, x0_src:x1_src]
 
-    import cv2
+    out = np.zeros((height, width, 4), dtype=np.uint8)
+    x0_dst = max(0, (width - crop.shape[1]) // 2)
+    y0_dst = max(0, (height - crop.shape[0]) // 2)
+    out[y0_dst:y0_dst + crop.shape[0], x0_dst:x0_dst + crop.shape[1]] = crop
+    return out
 
-    return cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
 
-
-def _load_background(background_path: str, width: int, height: int) -> np.ndarray:
+def _load_background(background_path: str, width: int, height: int, background_scale: float = 1.0) -> np.ndarray:
     image = _to_rgba(iio.imread(background_path))
+    scale = max(0.01, float(background_scale))
+    if abs(scale - 1.0) > 1e-9:
+        import cv2
+        image_height, image_width = image.shape[:2]
+        scaled_width = max(1, int(round(image_width * scale)))
+        scaled_height = max(1, int(round(image_height * scale)))
+        interpolation = cv2.INTER_CUBIC if scale > 1.0 else cv2.INTER_AREA
+        image = cv2.resize(image, (scaled_width, scaled_height), interpolation=interpolation)
     return _fit_background_to_canvas(image, width, height)
 
 
@@ -109,6 +127,7 @@ def render(
     image_shape: tuple[int, int, int],
     output_path: str,
     background_path: str | None = None,
+    background_scale: float = 1.0,
     arc_color: tuple[float, float, float] = (1.0, 0.2, 0.2),
     ghost_alpha: float = 0.1,
     arc_line_width: float = 3.0,
@@ -150,7 +169,7 @@ def render(
 
     surface.flush()
     if background_path:
-        background = _load_background(background_path, width, height)
+        background = _load_background(background_path, width, height, background_scale=background_scale)
         iio.imwrite(output_path, _composite_over_background(layer, background))
     else:
         surface.write_to_png(output_path)
