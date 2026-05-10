@@ -49,10 +49,7 @@ Full debug videos:
 
 ## Setup
 
-Requires `libcairo2-dev` on the system (for pycairo).
-
 ```bash
-sudo apt-get install libcairo2-dev pkg-config
 uv sync
 ```
 

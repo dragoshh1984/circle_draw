@@ -12,7 +12,7 @@ dependencies = [
     "scipy>=1.10",
     "scikit-image>=0.21",
     "opencv-python>=4.8",
-    "pycairo>=1.25",
+    "skia-python>=1.82",
     "imageio>=2.31",
     "matplotlib>=3.7",
 ]
