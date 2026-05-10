@@ -15,11 +15,13 @@ venv/
 # uv
 .uv/
 
-# Generated outputs: keep only the committed demo run.
+# Generated outputs: keep only the committed demo runs.
 outputs/*
 !outputs/.gitkeep
 !outputs/demo_kakapo_logo/
 !outputs/demo_kakapo_logo/**
+!outputs/demo_red_panda_logo/
+!outputs/demo_red_panda_logo/**
 
 # Image assets
 *.png
@@ -31,6 +33,8 @@ outputs/*
 !input/background_sample.png
 !outputs/demo_kakapo_logo/
 !outputs/demo_kakapo_logo/**
+!outputs/demo_red_panda_logo/
+!outputs/demo_red_panda_logo/**
 *.zip
 
 # PDF papers/references
