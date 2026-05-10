@@ -56,28 +56,9 @@ sudo apt-get install libcairo2-dev pkg-config
 uv sync
 ```
 
-## Usage
+## Acknowledgements
 
-```bash
-uv run python scripts/run.py path/to/image.png outputs/
-```
+Many ideas in this project were inspired by the following papers:
 
-The command creates a timestamped run directory under `outputs/`. The default
-canvas is 1920×1080. Kept contours are fitted and centered on the canvas
-automatically; use `--no-center` to keep source-image coordinates.
-
-Use `--sharp-turn-threshold` (radians) to reject forward/backward candidate
-point batches containing local contour kinks above the threshold.
-
-Use `--sharp-turn-min-count` to make rejection less sensitive: a K batch is
-rejected only when at least that many points in the batch are sharp.
-
-Use `--sharp-turn-method poly` to switch to a local polynomial-overfit turn
-detector (after local PCA rotation). Tune with `--poly-window-radius`,
-`--poly-high-degree`, and `--poly-improvement-ratio`.
-
-Use `--max-circle-radius` to cap fitted circle size (default: 500).
-
-
-Add `--debug` to write step-by-step fitting videos into the run's `debug/`
-directory.
+- Walter Gander, Gene H. Golub, and Rolf Strebel (1994), *Least-Squares Fitting of Circles and Ellipses*.
+- Eric Saund (1993), *Identifying Salient Circular Arcs on Curves* (Xerox PARC Technical Report SPL-93-017).
